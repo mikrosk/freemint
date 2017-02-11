@@ -12,8 +12,6 @@ subdir = aranym
 
 default: all
 
-CPU = 040
-
 include $(top_srcdir)/CONFIGVARS
 include $(top_srcdir)/RULES
 include $(top_srcdir)/PHONY
@@ -27,6 +25,7 @@ XDD_DEFINITIONS =
 
 LD = $(CC) -nostdlib -Wl,--entry -Wl,_init
 LIBS = $(LIBKERN) -lgcc
+CPU = 040
 
 # default definitions
 SGENFILES = $(TARGET)
