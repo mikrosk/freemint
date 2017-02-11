@@ -79,7 +79,7 @@ _build_context:
 #ifdef WITH_MMU_SUPPORT
 	tst.w	_no_mem_prot		// is there memory protection?
 	bne.s	noprot1
-#if defined (M68040) || defined (M68060)
+#ifdef M68040
 	dc.w	0x4e7a,0x0806		// movec urp,d0
 	move.l	d0,C_CRP(a0)
 #else
@@ -221,7 +221,7 @@ _save_context:
 	tst.w	_no_mem_prot
 	bne.s	noprot2
 	move.w	sr,d1
-#if defined(M68040) || defined(M68060)
+#ifdef M68040
 	dc.w	0x4e7a,0x0806		// movec urp,d0
 	move.l	d0,C_CRP(a0)
 #else
@@ -462,7 +462,7 @@ _change_context:
 	tst.w	_no_mem_prot
 	bne.s	noprot4
 	move.w	sr,d1
-#if defined(M68040) || defined(M68060)
+#ifdef M68040
 	move.l	C_CRP(a0),d0
 	dc.w	0xf518			// pflusha
 	dc.w	0x4e7b,0x0806		// movec d0,urp
