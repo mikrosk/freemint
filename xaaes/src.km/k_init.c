@@ -618,39 +618,6 @@ k_init(unsigned long vm)
 				 */
 
 				/*
-				 * First try...
-				 */
-#if 0
-				vcheckmode(vm & 0xffff);	/* Works on my Milan - 040 w/s3 trio */
-								/* Didnt work on Vido's Milan - 060 w/rage. Didnt change res*/
-#endif
-				/*
-				 * Second try...		 * Works on my Milan - 040 w/s3 trio
-				 *				 * Didnt work on Vido's Milan - 060 w/rage. System freeze!
-				 */
-#if 0
-				vsetmode(vm & 0xffff);
-#endif
-
-				/*
-				 * Third try...			 * Works with some resolutio on my Milan - VERY unstable. Whe
-				 * This is the same as		 * it freezes, it freezes so good I have to use reset to recover
-				 * on the Falcon		 * Not tested on Vido's 060 w/rage Milan
-				 */
-#if 0
-				mode = 5;
-				work_out[45] = vm & 0xffffL;
-#endif
-
-				/*
-				 * Fourth try...		* This works perfect on _my_ milan. Dont know how it works on
-				 *				* other machines yet... didnt work with nvdi 5.03 installed!
-				 */
-#if 0
-				mvdi_device(vm & 0x0000ffffUL, 0L, DEVICE_SETDEVICE, (long *)&ret);
-#endif
-
-				/*
 				 * Fifth try...
 				 * this is the same method as used on the Falcon,
 				 * only using devid 7 instead of 5.
