@@ -61,13 +61,20 @@
 #define DriveToLetter(d) ((d) < 26 ? 'A' + (d) : (d) - 26 + '1')
 
 /*
+ * 1000 seems to be good starting point even with fake ikbd int
+ * Much more or less causes errors
+ */
+#define DUMMY_LOOP_RECV 1000
+#define DUMMY_LOOP_SEND 1000
+
+/*
  * From main.c
  */
 extern long driver_init (void);
 
+
 // to make compiler happy
 void _cdecl svethlana_int (void);
-
 
 /*
  * Our interface structure
@@ -75,6 +82,12 @@ void _cdecl svethlana_int (void);
 static struct netif if_svethlana;
 
 
+/*
+ * Prototypes for fake ikbd interrupt functions
+ */
+void _cdecl fake_ikbd_int (void);
+static inline int ikbd_int_pending(void);
+static inline void ikbd_int_pending_handle_all(void);
 
 /*
  * Prototypes for our service functions
@@ -144,6 +157,36 @@ static uint32 cur_rx_slot = 0;
 //It's allocated in Init_BD() and deallocated at shutdown. The allocation is and
 //must be done in SuperVidel video RAM (DDR RAM).
 static char* packets_base = 0;
+
+/*
+ * Check if there is a pending interrupt request from the keyboard ACIA.
+ * We use this while the CPU priority is set to 6, causing interrupts to
+ * be disabled.  The major problem with this is that some keyboard/mouse
+ * interrupt data is lost, which typically results in mouse movements
+ * being interpreted as keyclicks, then repeating keys and other nasties.
+ *
+ * We call this routine to poll for ikbd interrupts, which are then serviced
+ * by calling the keyboard interrupt routine ourselves.
+ *
+ * Returns != 0 if there is a pending interrupt request.
+ */
+static inline int ikbd_int_pending(void)
+{
+	unsigned char keyctl = *(volatile unsigned char *)0xFFFFFC00UL;
+	return keyctl & 0x80;
+}
+
+/*
+ * Handle all pending ikbd interrupts
+ *
+ * Some handling outside recv and send loops is needed, but not sure if
+ * this is a good idea.
+ */
+static inline void ikbd_int_pending_handle_all(void)
+{
+	while (ikbd_int_pending())
+		fake_ikbd_int();
+}
 
 /*
  * This gets called when someone makes an 'ifconfig up' on this interface
@@ -467,6 +510,8 @@ static long send_packet	(struct netif *nif, BUF *nbuf, long buf_alloc_type, uint
 		*/
 
 		*eth_dst_pnt++ = *datapnt++;
+		if (ikbd_int_pending())
+			fake_ikbd_int();
 	}
 
 /*
@@ -478,9 +523,11 @@ static long send_packet	(struct netif *nif, BUF *nbuf, long buf_alloc_type, uint
 	*/
 
 	//Dummy loop to wait for the CT60 write FIFO to empty
-	for (j = 0; j < 1000; j++)
+	for (j = 0; j < DUMMY_LOOP_SEND; j++)
 	{
-		asm("nop;");
+		//asm("nop;");
+		if (ikbd_int_pending())
+			fake_ikbd_int();
 	}
 
 	//Write length of data, BD ready, BD CRC enable
@@ -1089,6 +1136,7 @@ static void svethlana_service (struct netif * nif, uint32 int_src)
 				}
 			}
 		}
+		ikbd_int_pending_handle_all();
 	}
 
 
@@ -1114,6 +1162,7 @@ static void svethlana_service (struct netif * nif, uint32 int_src)
 
 //			b = buf_alloc (length+200, 100, BUF_ATOMIC);
 			b = buf_alloc (1518UL + 128UL, 64UL, BUF_ATOMIC);
+			ikbd_int_pending_handle_all();
 			if(b == 0)
 			{
 				nif->in_errors++;
@@ -1129,9 +1178,11 @@ static void svethlana_service (struct netif * nif, uint32 int_src)
 				b->dend = (char*)(((uint32)(b->dend)) & 0xFFFFFFFCUL);
 
 				//Dummy loop to wait for the MAC write FIFO to empty
-				for (j = 0; j < 1000; j++)
+				for (j = 0; j < DUMMY_LOOP_RECV; j++) // 1000 * 4 cycles
 				{
-					asm("nop;");
+					//asm("nop;");
+					if (ikbd_int_pending())
+						fake_ikbd_int();
 				}
 
 				//read the data, rounded up to even longwords
@@ -1162,6 +1213,7 @@ static void svethlana_service (struct netif * nif, uint32 int_src)
 					c_conws("input packet failed when receiving!\r\n");
 				}
 			}
+			ikbd_int_pending_handle_all();
 
 			//now mark the buffer as empty and free to use
 			eth_rx_bd[slot].len_ctrl |= ETH_RX_BD_EMPTY;
@@ -1169,7 +1221,6 @@ static void svethlana_service (struct netif * nif, uint32 int_src)
 			slot = Check_Rx_Buffers();
 		}
 	}
-
 
 	// Check for transmitted packets
 	if ((int_src & (ETH_INT_TXB || ETH_INT_TXE)) != 0)	// Transmit complete or error
