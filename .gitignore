@@ -92,3 +92,6 @@ usb*.km
 sys/usb/src.km/tos-common/stripex
 doc/freemint.hyp
 doc/freemint.ref
+
+.qtc_clangd/
+*.creator.user
