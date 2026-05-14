@@ -52,6 +52,8 @@
 #include "mint/sockio.h"
 #include "mint/endian.h"
 
+#include "libkern/ikbd_poll.h"
+
 #include "sv_regs.h"
 #include "svethlana_i6.h"
 
@@ -81,13 +83,6 @@ void _cdecl svethlana_int (void);
  */
 static struct netif if_svethlana;
 
-
-/*
- * Prototypes for fake ikbd interrupt functions
- */
-void _cdecl fake_ikbd_int (void);
-static inline int ikbd_int_pending(void);
-static inline void ikbd_int_pending_handle_all(void);
 
 /*
  * Prototypes for our service functions
@@ -157,24 +152,6 @@ static uint32 cur_rx_slot = 0;
 //It's allocated in Init_BD() and deallocated at shutdown. The allocation is and
 //must be done in SuperVidel video RAM (DDR RAM).
 static char* packets_base = 0;
-
-/*
- * Check if there is a pending interrupt request from the keyboard ACIA.
- * We use this while the CPU priority is set to 6, causing interrupts to
- * be disabled.  The major problem with this is that some keyboard/mouse
- * interrupt data is lost, which typically results in mouse movements
- * being interpreted as keyclicks, then repeating keys and other nasties.
- *
- * We call this routine to poll for ikbd interrupts, which are then serviced
- * by calling the keyboard interrupt routine ourselves.
- *
- * Returns != 0 if there is a pending interrupt request.
- */
-static inline int ikbd_int_pending(void)
-{
-	unsigned char keyctl = *(volatile unsigned char *)0xFFFFFC00UL;
-	return keyctl & 0x80;
-}
 
 /*
  * Handle all pending ikbd interrupts

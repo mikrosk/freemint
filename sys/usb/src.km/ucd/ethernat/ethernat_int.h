@@ -49,12 +49,10 @@ void hook_reset_vector(void);
 void set_old_int_lvl(void);
 void set_int_lvl6(void);
 
-/* 
+/*
  * To know if the EtherNat is present through the bus error
  */
 void ethernat_probe_asm(void);
 void ethernat_probe_c(void);
-
-void fake_ikbd_int(void);
 
 #endif // _ethernat_int_h
