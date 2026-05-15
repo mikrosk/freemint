@@ -990,6 +990,7 @@ max_transfer_len(struct usb_device *dev, unsigned long pipe)
 	}
 }
 
+#ifdef TOSONLY
 /* Returns the current interrupt level of the CPU.
  * Must only be called in supervisor mode.
  */
@@ -998,6 +999,7 @@ static inline unsigned int get_int_lvl() {
 	__asm("move %%sr,%0" : "=d" (sr) : /* no inputs */);
 	return (sr >> 8) & 7;
 }
+#endif
 
 /* Do an USB transfer
  */

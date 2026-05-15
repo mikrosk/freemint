@@ -578,8 +578,10 @@ write_ptddata_to_fifo(struct isp116x *isp116x, void *buf, long len)
 			w = *dp++;
 			w |= *dp++ << 8;
 			isp116x_raw_write_data16(isp116x, w);
+#ifdef TOSONLY
 			if (ikbd_int_pending())
 				fake_ikbd_int();
+#endif
 		}
 		for (; len > 1; len -= 2)
 		{
@@ -600,8 +602,10 @@ write_ptddata_to_fifo(struct isp116x *isp116x, void *buf, long len)
 			isp116x_write_data16(isp116x, *dp2++);
 			isp116x_write_data16(isp116x, *dp2++);
 			isp116x_write_data16(isp116x, *dp2++);
+#ifdef TOSONLY
 			if (ikbd_int_pending())
 				fake_ikbd_int();
+#endif
 		}
 		for (; len > 1; len -= 2)
 			isp116x_write_data16(isp116x, *dp2++);
@@ -668,8 +672,10 @@ read_ptddata_from_fifo(struct isp116x *isp116x, void *buf, long len)
 			w = isp116x_raw_read_data16(isp116x);
 			*dp++ = w & 0xff;
 			*dp++ = (w >> 8) & 0xff;
+#ifdef TOSONLY
 			if (ikbd_int_pending())
 				fake_ikbd_int();
+#endif
 		}
 		for (; len > 1; len -= 2)
 		{
@@ -690,8 +696,10 @@ read_ptddata_from_fifo(struct isp116x *isp116x, void *buf, long len)
 			*dp2++ = isp116x_read_data16(isp116x);
 			*dp2++ = isp116x_read_data16(isp116x);
 			*dp2++ = isp116x_read_data16(isp116x);
+#ifdef TOSONLY
 			if (ikbd_int_pending())
 				fake_ikbd_int();
+#endif
 		}
 		for (; len > 1; len -= 2)
 			*dp2++ = isp116x_read_data16(isp116x);
@@ -909,6 +917,7 @@ max_transfer_len(struct usb_device *dev, unsigned long pipe)
 	return 1023 / mpck * mpck;
 }
 
+#ifdef TOSONLY
 /* Returns the current interrupt level of the CPU.
  * Must only be called in supervisor mode.
  */
@@ -917,16 +926,17 @@ static inline unsigned int get_int_lvl() {
 	__asm("move %%sr,%0" : "=d" (sr) : /* no inputs */);
 	return (sr >> 8) & 7;
 }
+#endif
 
 /* Do an USB transfer
  *
- * If we are in supervisor state, we poll for ikbd interrupts on the
- * assumption that we were called from the timer interrupt (via etv_timer)
- * and thus are running with interrupts disabled.  This will happen when
- * called by a USB mouse or keyboard driver.
- *
- * DavidGZ: MiNT drivers always run in supervisor mode so the comment above
- * only applies for TOS drivers
+ * On TOS, USB HID drivers chain into etv_timer, so this function may be
+ * entered from the 200 Hz timer IRQ at IPL 6 with the kernel's IKBD ACIA
+ * handler masked.  Poll the ACIA at strategic points so keystrokes /
+ * mouse packet bytes don't overrun while we hold the bus.  Under MiNT
+ * the driver runs in a kthread at IPL 0; the kernel IKBD handler fires
+ * normally and the polling is unnecessary, so the whole mechanism is
+ * compiled out.
  */
 static long
 isp116x_submit_job(struct usb_device *dev, unsigned long pipe,
@@ -949,22 +959,24 @@ isp116x_submit_job(struct usb_device *dev, unsigned long pipe,
 	 */
 	short retries = ((type==PIPE_INTERRUPT) || (flags&USB_BULK_FLAG_EARLY_TIMEOUT)) ? 0 : time_out;
 	short set_extra_delay = 0;
+#ifdef TOSONLY
 	short poll_interrupts = 0;
+#endif
 
 	DEBUG(("------------------------------------------------"));
 	dump_msg(dev, pipe, buffer, len, "SUBMIT");
 	DEBUG(("------------------------------------------------"));
 
+#ifdef TOSONLY
 	/*
 	 * set flag if we need to poll for ikbd interrupts
 	 */
-#ifdef TOSONLY
 	if (Super(1L) && (get_int_lvl() >= 6))
-#endif
 		poll_interrupts = 1;
 
 	if (poll_interrupts && ikbd_int_pending())
 		fake_ikbd_int();
+#endif
 
 	dev->act_len = 0L;		/* for safety, init bytes transferred */
 
@@ -1051,8 +1063,10 @@ retry_same:
 	}
 	MINT_INT_ON;
 
+#ifdef TOSONLY
 	if (poll_interrupts && ikbd_int_pending())
 		fake_ikbd_int();
+#endif
 
 	/* Pack data into FIFO ram */
 	pack_fifo(isp116x, dev, pipe, ptd, buffer, len);
@@ -1076,8 +1090,10 @@ retry_same:
 	/* Wait for it to complete */
 	for (;;)
 	{
+#ifdef TOSONLY
 		if (poll_interrupts && ikbd_int_pending())
 			fake_ikbd_int();
+#endif
 
 		/* Check whether the controller is done */
 		stat = isp116x_interrupt(isp116x);
@@ -1140,8 +1156,10 @@ retry_same:
 	}
 	MINT_INT_ON;
 
+#ifdef TOSONLY
 	if (poll_interrupts && ikbd_int_pending())
 		fake_ikbd_int();
+#endif
 
 	/* Unpack data from FIFO ram */
 	cc = unpack_fifo(isp116x, dev, pipe, ptd, buffer, len);
@@ -1236,8 +1254,10 @@ retry_same:
 	dev->status = 0;
 	unlock_usb(&job_in_progress);
 
+#ifdef TOSONLY
 	if (poll_interrupts && ikbd_int_pending())
 		fake_ikbd_int();
+#endif
 
 	return done;
 }
