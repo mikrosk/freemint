@@ -1024,8 +1024,8 @@ int32 Check_Rx_Buffers()
 		tmp2 = eth_rx_bd[cur_rx_slot].len_ctrl;
 		if ((tmp2 & ETH_RX_BD_EMPTY) == 0UL)
 		{
-			ksprintf (message, "Slot %lu RX retried read: 0x%08lx then 0x%08lx\r\n", cur_rx_slot, tmp1, tmp2);
-			c_conws (message);
+			//ksprintf (message, "Slot %lu RX retried read: 0x%08lx then 0x%08lx\r\n", cur_rx_slot, tmp1, tmp2);
+			//c_conws (message);
 			retval = (int32)cur_rx_slot;
 			cur_rx_slot = (cur_rx_slot + 1) & (ETH_PKT_BUFFS-1);
 		}
@@ -1038,6 +1038,14 @@ int32 Check_Rx_Buffers()
 
 /* Service function called by the interrupt handler
  * In here we check the interrupt bits, and do receive and transmit if necessary
+ *
+ * Nothing reached from here may write to the console. c_conws() is GEMDOS
+ * Cconws, which is f_write() on file handle 1 of the current process. Called
+ * from an interrupt the current process is whatever was running, so the text
+ * lands in an unrelated terminal or file, and the write descends into the tty
+ * layer where it can sleep - which an interrupt handler must not do. The
+ * in_packets and in_errors counters carry the same information and are
+ * readable through ifstat, so the console calls below stay commented out.
  */
 static void svethlana_service (struct netif * nif, uint32 int_src)
 {
@@ -1059,7 +1067,7 @@ static void svethlana_service (struct netif * nif, uint32 int_src)
 
 	if (int_src & ETH_INT_BUSY)
 	{
-		c_conws ("Busy\r\n");
+		//c_conws ("Busy\r\n");
 	}
 
 	if (int_src & ETH_INT_RXE)
@@ -1076,8 +1084,8 @@ static void svethlana_service (struct netif * nif, uint32 int_src)
 											 ETH_RX_BD_TOOLONG | ETH_RX_BD_SHORT | ETH_RX_BD_CRCERR | ETH_RX_BD_LATECOL))
 				{
 					//At least one of the above error flags was set
-					ksprintf (message, "Slot %d RX errorflags: 0x%08lx \r\n", i, eth_rx_bd[i].len_ctrl);
-					c_conws (message);
+					//ksprintf (message, "Slot %d RX errorflags: 0x%08lx \r\n", i, eth_rx_bd[i].len_ctrl);
+					//c_conws (message);
 
 					//Clear error flags
 					eth_rx_bd[i].len_ctrl &= ~(ETH_RX_BD_OVERRUN | ETH_RX_BD_INVSIMB | ETH_RX_BD_DRIBBLE |
@@ -1144,7 +1152,7 @@ static void svethlana_service (struct netif * nif, uint32 int_src)
 				b->dend += (uint32)(length - 4UL);				//TODO: should we subtract 4 here, to skip the CRC?
 				if((b->dend) < (b->dstart))
 				{
-					c_conws("RX: dend < dstart!\r\n");
+					//c_conws("RX: dend < dstart!\r\n");
 				}
 
 				// Pass packet to upper layers
@@ -1158,8 +1166,10 @@ static void svethlana_service (struct netif * nif, uint32 int_src)
 					nif->in_packets++;
 				else
 				{
+					//A full input queue is ordinary congestion during a bulk
+					//transfer, not a fault worth reporting per packet
 					nif->in_errors++;
-					c_conws("input packet failed when receiving!\r\n");
+					//c_conws("input packet failed when receiving!\r\n");
 				}
 			}
 
@@ -1172,7 +1182,7 @@ static void svethlana_service (struct netif * nif, uint32 int_src)
 
 
 	// Check for transmitted packets
-	if ((int_src & (ETH_INT_TXB || ETH_INT_TXE)) != 0)	// Transmit complete or error
+	if ((int_src & (ETH_INT_TXB | ETH_INT_TXE)) != 0)	// Transmit complete or error
 	{
 		if(int_src & ETH_INT_TXE)				// TX eror set => failed!
 		{
