@@ -1008,6 +1008,7 @@ int32 Check_Rx_Buffers()
 	int32  retval = -1L;
 	uint32 tmp1;
 	uint32 tmp2;
+	int    i;
 
 	//We check only one slot, which is the one not checked the last time
 	//we were here. We only move to the other slot if we found a packet in the current slot.
@@ -1028,6 +1029,29 @@ int32 Check_Rx_Buffers()
 			//c_conws (message);
 			retval = (int32)cur_rx_slot;
 			cur_rx_slot = (cur_rx_slot + 1) & (ETH_PKT_BUFFS-1);
+		}
+		else
+		{
+			//Still nothing where we expect it, which does not mean the ring
+			//is empty. A descriptor we are parked on can be handed back to
+			//the MAC by another path, and from then on checking that one
+			//descriptor alone reports "no packet" for ever while the MAC
+			//keeps filling the rest of the ring, so the interface stops
+			//receiving altogether. Scan forward for the oldest packet still
+			//waiting and carry on from there. The MAC fills the ring in
+			//order, so the first one found is the oldest and packet order is
+			//preserved.
+			for (i = 1; i < ETH_PKT_BUFFS; i++)
+			{
+				uint32 slot = (cur_rx_slot + (uint32)i) & (ETH_PKT_BUFFS-1);
+
+				if ((eth_rx_bd[slot].len_ctrl & ETH_RX_BD_EMPTY) == 0UL)
+				{
+					retval = (int32)slot;
+					cur_rx_slot = (slot + 1UL) & (ETH_PKT_BUFFS-1);
+					break;
+				}
+			}
 		}
 	}
 	return retval;
@@ -1070,38 +1094,15 @@ static void svethlana_service (struct netif * nif, uint32 int_src)
 		//c_conws ("Busy\r\n");
 	}
 
-	if (int_src & ETH_INT_RXE)
-	{
-		//c_conws("RX error!\r\n");
-		//printf("E");
-
-		// Check which BD has the error and clear it
-		for (i = 0; i < ETH_PKT_BUFFS; i++)
-		{
-			if((eth_rx_bd[i].len_ctrl & ETH_RX_BD_EMPTY) == 0UL)
-			{
-				if (eth_rx_bd[i].len_ctrl & (ETH_RX_BD_OVERRUN | ETH_RX_BD_INVSIMB | ETH_RX_BD_DRIBBLE |
-											 ETH_RX_BD_TOOLONG | ETH_RX_BD_SHORT | ETH_RX_BD_CRCERR | ETH_RX_BD_LATECOL))
-				{
-					//At least one of the above error flags was set
-					//ksprintf (message, "Slot %d RX errorflags: 0x%08lx \r\n", i, eth_rx_bd[i].len_ctrl);
-					//c_conws (message);
-
-					//Clear error flags
-					eth_rx_bd[i].len_ctrl &= ~(ETH_RX_BD_OVERRUN | ETH_RX_BD_INVSIMB | ETH_RX_BD_DRIBBLE |
-																		 ETH_RX_BD_TOOLONG | ETH_RX_BD_SHORT | ETH_RX_BD_CRCERR | ETH_RX_BD_LATECOL);
-
-					//mark the buffer as empty and free to use
-					eth_rx_bd[i].len_ctrl |= ETH_RX_BD_EMPTY;
-					nif->in_errors++;
-				}
-			}
-		}
-	}
+	// A damaged frame is handed to us in a descriptor like any other, so it is
+	// picked up and released by the receive loop below in ring order. Walking
+	// the whole ring here and releasing descriptors wherever an error flag
+	// happened to be set gave them back to the MAC out of sequence, which is
+	// how the receive index lost its place and the interface went deaf.
 
 
-	// Check for received packets
-	if (int_src & ETH_INT_RXB)
+	// Check for received packets, damaged ones included
+	if (int_src & (ETH_INT_RXB | ETH_INT_RXE))
 	{
 		//printf("RX frame!\r\n");
 
@@ -1121,8 +1122,17 @@ static void svethlana_service (struct netif * nif, uint32 int_src)
 			src = (uint32*)eth_rx_bd[slot].data_pnt;
 
 //			b = buf_alloc (length+200, 100, BUF_ATOMIC);
-			b = buf_alloc (1518UL + 128UL, 64UL, BUF_ATOMIC);
-			if(b == 0)
+			if (eth_rx_bd[slot].len_ctrl & (ETH_RX_BD_OVERRUN | ETH_RX_BD_INVSIMB | ETH_RX_BD_DRIBBLE |
+											ETH_RX_BD_TOOLONG | ETH_RX_BD_SHORT | ETH_RX_BD_CRCERR | ETH_RX_BD_LATECOL))
+			{
+				//Length and contents cannot be trusted. Count it, clear the
+				//flags, and let the descriptor be released at the bottom of
+				//the loop like any other.
+				eth_rx_bd[slot].len_ctrl &= ~(ETH_RX_BD_OVERRUN | ETH_RX_BD_INVSIMB | ETH_RX_BD_DRIBBLE |
+											  ETH_RX_BD_TOOLONG | ETH_RX_BD_SHORT | ETH_RX_BD_CRCERR | ETH_RX_BD_LATECOL);
+				nif->in_errors++;
+			}
+			else if((b = buf_alloc (1518UL + 128UL, 64UL, BUF_ATOMIC)) == 0)
 			{
 				nif->in_errors++;
 				//ksprintf (message, "buf_alloc RX failed, %lu \r\n", 1518UL + 200UL);
