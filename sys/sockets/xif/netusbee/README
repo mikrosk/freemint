@@ -1,0 +1,28 @@
+NetUSBee/EtherNEC driver for FreeMiNT
+
+An NE2000 compatible card on the cartridge port: the Ethernet part of the
+NetUSBee (an RTL8019AS) or an ISA card in an EtherNEC adapter. The card
+must be configured for I/O address 0x300, which is how the NetUSBee comes.
+
+The driver is a port of the Linux ne driver and 8390 core
+(drivers/net/ethernet/8390/ne.c, lib8390.c and 8390.h) with the cartridge
+port ISA emulation of arch/m68k/include/asm/raw_io.h. Names are kept as in
+Linux so that fixes can be carried over. See the comments at the top of
+ne.c for what was left out.
+
+The card has no interrupt line. It is polled from the 200 Hz system timer,
+which is where the EtherNE driver polls it from and what Linux does from
+an MFP timer. The MAC address comes from the card's PROM; it can be
+replaced while the interface is down with
+
+	ifconfig en0 hwaddr 00:20:43:58:78:3c
+
+Installation
+
+Copy netusbee.xif to the MiNT directory. The 000 build is for the 68000,
+the 02060 build for the 68020 and up; the latter adds a nop after every
+write to the cartridge port, which the EtherNE driver found the faster
+machines need.
+
+The USB part of the NetUSBee is handled by the driver in
+sys/usb/src.km/ucd/netusbee.
