@@ -1,0 +1,20 @@
+# This file gets included by the Makefile in this directory to determine
+# the files that should go only into source distributions.
+
+HEADER = \
+	8390.h \
+	lib8390.c \
+	netusbee_int.h
+
+NETUSBEE_SRCS = \
+	ne.c \
+	netusbee_int.S
+
+COMMON_SRCS = \
+	../main.c
+
+COBJS = \
+	$(COMMON_SRCS) \
+	$(NETUSBEE_SRCS)
+
+SRCFILES = $(HEADER) $(COBJS)
