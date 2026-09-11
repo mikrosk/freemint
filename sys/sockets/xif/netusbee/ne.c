@@ -136,24 +136,52 @@ static inline void rom_out_8(unsigned long addr, u8 b)
 #define inb_p(port)	inb(port)
 #define outb_p(val, port) outb((val), (port))
 
+/*
+ * The byte streams are what the AssemSoft NE2000 driver for the EtherNEC
+ * does: eight bytes per loop, one instruction per byte on the way in and
+ * four on the way out. gcc puts a data register between the two memory
+ * operands, so the eight-byte blocks are written out.
+ */
+#if defined(__mc68020__) || defined(__mc68030__) || defined(__mc68040__) || defined(__mc68060__)
+# define ROM_OUT_NOP	"\tnop\n"
+#else
+# define ROM_OUT_NOP	""
+#endif
+
+#define ROM_IN_1	"\tmove.b (%1),(%0)+\n"
+#define ROM_OUT_1	"\tmoveq #0,%2\n\tmove.b (%0)+,%2\n\tadd.l %2,%2\n\ttst.b (%1,%2.l)\n" ROM_OUT_NOP
+
 static inline void insb(unsigned long port, void *buf, long len)
 {
-	unsigned long addr = ENEC_ISA_IO_B(port);
+	const volatile u8 *src = (const volatile u8 *) ENEC_ISA_IO_B(port);
 	u8 *p = buf;
-	long i;
 
-	for (i = 0; i < len; i++)
-		*p++ = rom_in_8(addr);
+	while (len >= 8) {
+		__asm__ __volatile__ (
+			ROM_IN_1 ROM_IN_1 ROM_IN_1 ROM_IN_1
+			ROM_IN_1 ROM_IN_1 ROM_IN_1 ROM_IN_1
+			: "+a" (p) : "a" (src) : "memory");
+		len -= 8;
+	}
+	while (len-- > 0)
+		*p++ = *src;
 }
 
 static inline void outsb(unsigned long port, const void *buf, long len)
 {
-	unsigned long addr = ENEC_ISA_IO_B(port);
+	unsigned long wbase = ENEC_ISA_IO_B(port) | 0x10000UL;
 	const u8 *p = buf;
-	long i;
+	unsigned long tmp;
 
-	for (i = 0; i < len; i++)
-		rom_out_8(addr, *p++);
+	while (len >= 8) {
+		__asm__ __volatile__ (
+			ROM_OUT_1 ROM_OUT_1 ROM_OUT_1 ROM_OUT_1
+			ROM_OUT_1 ROM_OUT_1 ROM_OUT_1 ROM_OUT_1
+			: "+a" (p), "+a" (wbase), "=&d" (tmp) : : "memory", "cc");
+		len -= 8;
+	}
+	while (len-- > 0)
+		rom_out_8(wbase & ~0x10000UL, *p++);
 }
 
 /* the platform data of arch/m68k/atari/config.c */
