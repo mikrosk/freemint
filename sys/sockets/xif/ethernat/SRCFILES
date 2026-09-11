@@ -2,16 +2,17 @@
 # the files that should go only into source distributions.
 
 ETHERNAT_SRCS = \
-	91c111.c \
 	ethernat.c \
-	ethernat_200Hzint.S
+	ethernat_200Hzint.S \
+	mii.c
 
 COMMON_SRCS = \
 	../main.c
 
 HEADER = \
 	91c111.h \
-	ethernat_200Hzint.h
+	ethernat_200Hzint.h \
+	mii.h
 
 COBJS = \
 	$(COMMON_SRCS) \
